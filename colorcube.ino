@@ -38,6 +38,7 @@ boolean showAllPixels = true;
 #define S2 6
 #define S3 7
 #define sensorOut 8
+#define powerPin 10
 int frequency = 0;
 int r = 0;
 int g = 0;
@@ -68,6 +69,8 @@ int old_b = 0;
 boolean buttonState = LOW;
 boolean buttonIsReleased = true;
 boolean buttonIsPressed = false;
+boolean bootUpComplete = false;
+
 long timeStamp = 0; // timer - how long was the button pressed?
 
 
@@ -97,6 +100,8 @@ void setup() {
   pinMode(S2, OUTPUT);
   pinMode(S3, OUTPUT);
   pinMode(sensorOut, INPUT);
+  pinMode(powerPin, OUTPUT); 
+  digitalWrite(powerPin, LOW);
 
   pinMode(3, INPUT); //  Button Pin
   digitalWrite(3, HIGH);
@@ -128,6 +133,8 @@ void loop() {
 
   // If button is pressed
   if (buttonState == LOW) {
+    digitalWrite(powerPin, HIGH);
+
     buttonIsPressed = true;
     //timeStampBlink = millis(); // this line stops the cube from blinking if the button is pressed
     // If button was not pressed before, capture timestamp
@@ -169,27 +176,43 @@ void loop() {
     }
 
     // read color sensor
+
+    // einmalige Pause
+    if (!bootUpComplete) {
+      bootUpComplete = true;
+      delay(150);
+    }
+    
     readAvgRawColors();
     mapColors();
 
   }  // end of if button is pressed
   else {
+    bootUpComplete = false;
+
     buttonIsPressed = false;
+    digitalWrite(powerPin, LOW);
+    digitalWrite(S2, LOW);
+    digitalWrite(S3, LOW);
+
     // button was pressed an now it has been released
     if (buttonIsReleased == false) {
       //Serial.println(abs(millis() - timeStamp));
       // If button was pressed longer than n milliseconds
-      if (abs(millis() - timeStamp) > 10000) {
+      // I extended by a long long time instead of deleting this obsolete procedure
+      if (abs(millis() - timeStamp) > 30000) {
 
         // Save Settings
-        if (rRawAvg < 120 && gRawAvg < 120 & bRawAvg > 70) {
+        //if (rRawAvg < 120 && gRawAvg < 120 & bRawAvg > 70) {
+        if (rRawAvg < 70 && gRawAvg < 80 & bRawAvg > 70) {
           giveFeedback(0, 255, 0, 3);
           saveSettings();
         }
 
         // If a black card or object is presented: calibrate black
         //if (r == 0 && g == 0 & b == 0) {
-        if (rRawAvg > 200 && gRawAvg > 200 & bRawAvg > 160) {
+        //if (rRawAvg > 200 && gRawAvg > 200 & bRawAvg > 160) {
+        if (rRawAvg > 150 && gRawAvg > 170 & bRawAvg > 130) {  
           giveFeedback(255, 0, 0, 0);
           giveFeedback(0, 255, 0, 0);
           giveFeedback(0, 0, 255, 0);
@@ -207,7 +230,7 @@ void loop() {
 
       if (abs(millis() - timeStamp) > 4000) {
         //giveFeedback(0, 255, 0, 2);
-        if (rRawAvg < 50 && gRawAvg > 70 & bRawAvg > 70) {
+        if (rRawAvg < 70 && gRawAvg > 50 & bRawAvg > 50) {
           giveFeedback(255, 0, 0, 1);
           // turn blinkmode on
           displayMode = displayMode + 1;
@@ -447,6 +470,8 @@ void mapColors() {
 // takes a sensor reading
 // the result is assigned to golbal variables r, g, and b
 void readColors() {
+
+
   // Reading the output frequency
   // Setting red filtered photodiodes to be read
   digitalWrite(S2, LOW);
