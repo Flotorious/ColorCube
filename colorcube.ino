@@ -1,4 +1,4 @@
-/*
+ /*
    PROJECT "SCHAUKASTEN"
    ColorCube "Farbwürfel" Prototype Version 1 - Proof of concept
    Created 27 May 2017 FG
@@ -13,7 +13,7 @@
  * * longer than 10 seconds on top of black cardboard --> CALIBRATE BLACK
  * * longer than 10 seconds on top of white cardboard --> CALIBRATE WHITE
  * * longer than 4 seconds on red --> CHANGE LED PAPPTERN (normal --> blinking --> 'round trip')
- * * longer than 10 seconds on green --> SAVE CHANGES
+ * * longer than 10 seconds on top of green cardboard --> SAVE CHANGES
 
 
 */
@@ -33,12 +33,13 @@ int pixelCounter = 0;
 boolean showAllPixels = true;
 
 // Colour sensor related
-#define S0 4
-#define S1 5
+#define S0 4 // not really neccessary. can also solder S0 to 5V
+#define S1 5 // not really neccessary. can also solder S0 to GND
 #define S2 6
 #define S3 7
 #define sensorOut 8
 #define powerPin 10
+#define colorTaster 3 // or sometimes 2 in some cubes I built
 int frequency = 0;
 int r = 0;
 int g = 0;
@@ -76,6 +77,7 @@ long timeStamp = 0; // timer - how long was the button pressed?
 
 // Variables for implementing blinking etc.
 long timeStampBlink = 0; // timer for implementing blinking
+long lastPressed = 0;
 boolean isPaused = false;
 boolean isLEDOn = true;
 boolean isBlinkModeOff = true; // set this variable true to set cube to blink mode
@@ -102,9 +104,13 @@ void setup() {
   pinMode(sensorOut, INPUT);
   pinMode(powerPin, OUTPUT); 
   digitalWrite(powerPin, LOW);
-
-  pinMode(3, INPUT); //  Button Pin
+  pinMode(3, INPUT);
   digitalWrite(3, HIGH);
+  pinMode(A0, OUTPUT);  // A0 is for the Auto-shutoff Circuit of Cube V3. It is not used in V2beta, but it won't do any harm
+  digitalWrite(A0, HIGH);
+
+  pinMode(colorTaster, INPUT); //  Button Pin
+  digitalWrite(colorTaster, HIGH);
 
   // Setting frequency-scaling to 20%
   digitalWrite(S0, HIGH);
@@ -121,7 +127,8 @@ void setup() {
   pixels.begin(); // This initializes the NeoPixel library.
 
   timeStampBlink = millis();
-
+  Serial.println("setup complete");
+  lastPressed = millis();
 }
 
 
@@ -129,13 +136,18 @@ void setup() {
 // LOOP
 // ==================================================================================
 void loop() {
-  buttonState = digitalRead(3); // does the user push ColorCube?
-
+  // for Cuebe V3
+  if (abs(millis()-lastPressed)>60000) {
+    digitalWrite(A0, LOW);
+  }
+  
+  buttonState = digitalRead(colorTaster); // does the user push ColorCube?
   // If button is pressed
   if (buttonState == LOW) {
     digitalWrite(powerPin, HIGH);
 
     buttonIsPressed = true;
+    lastPressed = millis();
     //timeStampBlink = millis(); // this line stops the cube from blinking if the button is pressed
     // If button was not pressed before, capture timestamp
     if (buttonIsReleased == true)
@@ -146,7 +158,7 @@ void loop() {
       //giveFeedback(30, 30, 30, 1);
       rRawMax = rRawAvg * 0.5; // the colour mapping looks better (stronger colours) if we cut off the maximum value --> every value bigger than a certain threshold becomes full colour
       gRawMax = gRawAvg * 0.5;
-      bRawMax = bRawAvg * 0.5;
+      bRawMax = bRawAvg * 0.45;
       Serial.print("RMay: ");
       Serial.print(rRawMax);
       Serial.print(" ");
@@ -157,6 +169,7 @@ void loop() {
       Serial.print(bRawMax);
       Serial.println(" ");
       calibrateCube = 0;
+      saveSettings();
     }
     if (calibrateCube == WHITE) {
       //giveFeedback(255, 255, 255, 1);
@@ -173,6 +186,7 @@ void loop() {
       Serial.print(bRawMin);
       Serial.println(" ");
       calibrateCube = 0;
+      saveSettings();
     }
 
     // read color sensor
@@ -200,11 +214,13 @@ void loop() {
       //Serial.println(abs(millis() - timeStamp));
       // If button was pressed longer than n milliseconds
       // I extended by a long long time instead of deleting this obsolete procedure
-      if (abs(millis() - timeStamp) > 30000) {
+      Serial.println(abs(millis() - timeStamp));
+      if (abs(millis() - timeStamp) > 10000) {
+        //Serial.println("here");
 
         // Save Settings
         //if (rRawAvg < 120 && gRawAvg < 120 & bRawAvg > 70) {
-        if (rRawAvg < 70 && gRawAvg < 80 & bRawAvg > 70) {
+        if (rRawAvg < 70 && gRawAvg > 105 & bRawAvg < 90) {
           giveFeedback(0, 255, 0, 3);
           saveSettings();
         }
@@ -212,11 +228,12 @@ void loop() {
         // If a black card or object is presented: calibrate black
         //if (r == 0 && g == 0 & b == 0) {
         //if (rRawAvg > 200 && gRawAvg > 200 & bRawAvg > 160) {
-        if (rRawAvg > 150 && gRawAvg > 170 & bRawAvg > 130) {  
+        if (rRawAvg > 150 && gRawAvg > 170 && bRawAvg > 130) {  
           giveFeedback(255, 0, 0, 0);
           giveFeedback(0, 255, 0, 0);
           giveFeedback(0, 0, 255, 0);
           calibrateCube = BLACK;
+          Serial.println("calibrate black");
         }
         // If a white card or object is presented: calibrate white
         //if (r == 255 && g == 255 & b == 255) {
@@ -327,8 +344,10 @@ void giveFeedback(int r, int g, int b, int n) {
 
 // read aerage raw colors
 void readAvgRawColors() {
+  Serial.println("read average colors");
   int rSum = 0; int gSum = 0; int bSum = 0;;
   for (int i = 0; i < nReadingsArray; i++) {
+    //Serial.println(i);
     // Reading the output frequency
     // Setting red filtered photodiodes to be read
     digitalWrite(S2, LOW);
@@ -460,7 +479,7 @@ void mapColors() {
   Serial.print(" ");
   Serial.print("Bmapped: ");
   Serial.print(b);
-  Serial.println(" ");
+  Serial.println(" ");                                                                                      
 }
 
 
@@ -492,7 +511,7 @@ void readColors() {
   Serial.print("R= ");//printing name
   Serial.print(frequency);//printing RED color frequency
   Serial.print("  ");
-  delay(100);
+  delay(50);
   // Setting Green filtered photodiodes to be read
   digitalWrite(S2, HIGH);
   digitalWrite(S3, HIGH);
@@ -511,7 +530,7 @@ void readColors() {
   Serial.print("G= ");//printing name
   Serial.print(frequency);//printing RED color frequency
   Serial.print("  ");
-  delay(100);
+  delay(50);
   // Setting Blue filtered photodiodes to be read
   digitalWrite(S2, LOW);
   digitalWrite(S3, HIGH);
